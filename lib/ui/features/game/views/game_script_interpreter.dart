@@ -180,7 +180,7 @@ class GameScriptInterpreter {
     if (expression is _Unary) {
       final value = await _evaluate(expression.operand, line);
       if (expression.operator == 'not') return !_truthy(value);
-      if (value is! num) _error(line, 'Unary @${expression.operator} requires a number.');
+      if (value is! num) _error(line, 'Unary ${expression.operator} requires a number.');
       return expression.operator == '-' ? -value : value;
     }
     if (expression is _Binary) {
@@ -387,7 +387,7 @@ class GameScriptInterpreter {
     final function = _functions[name];
     if (function == null) _error(line, 'Unknown instruction or function "$name".');
     if (arguments.length != function.parameters.length) {
-      _error(line, '$name() expects @${function.parameters.length} argument(s).');
+      _error(line, '$name() expects ${function.parameters.length} argument(s).');
     }
     if (_functionDepth >= _maxFunctionDepth) {
       _error(line, 'Function recursion exceeds $_maxFunctionDepth calls.');
@@ -726,7 +726,7 @@ class _Parser {
     final match = RegExp(r'^(tent|cross|clear|wait)\s+(.+)$').firstMatch(text);
     if (match == null) return text;
     final parts = match.group(2)!.trim().split(RegExp(r'\s+'));
-    return '@${match.group(1)}(@${parts.join(', ')})';
+    return '${match.group(1)}(${parts.join(', ')})';
   }
 
   String _stripComment(String line) {
@@ -795,7 +795,7 @@ class _Parser {
   }
 
   Never _error(_ScriptLine line, String message) {
-    throw FormatException('Line @${line.number}: $message');
+    throw FormatException('Line ${line.number}: $message');
   }
 }
 
@@ -812,7 +812,7 @@ class _ExpressionParser {
 
   _Expression parse() {
     final expression = _parseOr();
-    if (!_isAtEnd) _fail('Unexpected token "@${_peek.text}".');
+    if (!_isAtEnd) _fail('Unexpected token "${_peek.text}".');
     return expression;
   }
 
