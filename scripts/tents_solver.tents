@@ -1,0 +1,192 @@
+# Tents puzzle solver.
+# Coordinates passed to game instructions are 1-based.
+# The solver searches candidate tent cells assigned to each tree.
+
+n = grid_size
+trees = []
+
+for row in range(1, n + 1):
+    for column in range(1, n + 1):
+        if tile(row, column) == "tree":
+            append(trees, [row, column])
+
+tree_total = len(trees)
+row_remaining = []
+column_remaining = []
+row_total = 0
+column_total = 0
+
+for index in range(1, n + 1):
+    row_value = row_target(index)
+    column_value = column_target(index)
+    append(row_remaining, row_value)
+    append(column_remaining, column_value)
+    row_total = row_total + row_value
+    column_total = column_total + column_value
+
+if row_total != tree_total or column_total != tree_total:
+    popup("The row or column clues do not match the number of trees.")
+else:
+    selected = []
+    assigned = []
+    candidates = []
+
+    for row_index in range(0, n):
+        row_data = []
+        for column_index in range(0, n):
+            append(row_data, False)
+        append(selected, row_data)
+
+    for tree_index in range(0, tree_total):
+        append(assigned, False)
+        tree_row = trees[tree_index][0]
+        tree_column = trees[tree_index][1]
+        options = []
+
+        if tree_row > 1:
+            if tile(tree_row - 1, tree_column) != "tree":
+                append(options, (tree_row - 2) * n + tree_column - 1)
+        if tree_row < n:
+            if tile(tree_row + 1, tree_column) != "tree":
+                append(options, tree_row * n + tree_column - 1)
+        if tree_column > 1:
+            if tile(tree_row, tree_column - 1) != "tree":
+                append(options, (tree_row - 1) * n + tree_column - 2)
+        if tree_column < n:
+            if tile(tree_row, tree_column + 1) != "tree":
+                append(options, (tree_row - 1) * n + tree_column)
+
+        append(candidates, options)
+
+    def can_place(row, column):
+        if row_remaining[row - 1] <= 0:
+            return False
+        if column_remaining[column - 1] <= 0:
+            return False
+
+        for neighbor_row in range(row - 1, row + 2):
+            for neighbor_column in range(column - 1, column + 2):
+                if neighbor_row >= 1 and neighbor_row <= n:
+                    if neighbor_column >= 1 and neighbor_column <= n:
+                        if selected[neighbor_row - 1][neighbor_column - 1]:
+                            return False
+
+        return True
+
+    def has_capacity():
+        for row in range(1, n + 1):
+            possible_trees = 0
+            for tree_index in range(0, tree_total):
+                found = False
+                if not assigned[tree_index]:
+                    for option_index in range(0, len(candidates[tree_index])):
+                        cell = candidates[tree_index][option_index]
+                        candidate_row = cell // n + 1
+                        candidate_column = cell % n + 1
+                        if candidate_row == row:
+                            if can_place(candidate_row, candidate_column):
+                                found = True
+                if found:
+                    possible_trees = possible_trees + 1
+
+            if row_remaining[row - 1] > possible_trees:
+                return False
+
+        for column in range(1, n + 1):
+            possible_trees = 0
+            for tree_index in range(0, tree_total):
+                found = False
+                if not assigned[tree_index]:
+                    for option_index in range(0, len(candidates[tree_index])):
+                        cell = candidates[tree_index][option_index]
+                        candidate_row = cell // n + 1
+                        candidate_column = cell % n + 1
+                        if candidate_column == column:
+                            if can_place(candidate_row, candidate_column):
+                                found = True
+                if found:
+                    possible_trees = possible_trees + 1
+
+            if column_remaining[column - 1] > possible_trees:
+                return False
+
+        return True
+
+    def search(assigned_count):
+        if assigned_count == tree_total:
+            for index in range(1, n + 1):
+                if row_remaining[index - 1] != 0:
+                    return False
+                if column_remaining[index - 1] != 0:
+                    return False
+            return True
+
+        if not has_capacity():
+            return False
+
+        best_tree = -1
+        best_count = n * n + 1
+        best_options = []
+
+        # Choose the unassigned tree with the fewest available cells.
+        for tree_index in range(0, tree_total):
+            if not assigned[tree_index]:
+                options = []
+                for option_index in range(0, len(candidates[tree_index])):
+                    cell = candidates[tree_index][option_index]
+                    row = cell // n + 1
+                    column = cell % n + 1
+                    if can_place(row, column):
+                        append(options, cell)
+
+                if len(options) == 0:
+                    return False
+
+                if len(options) < best_count:
+                    best_count = len(options)
+                    best_tree = tree_index
+                    best_options = options
+
+        if best_tree < 0:
+            return False
+
+        assigned[best_tree] = True
+
+        for option_index in range(0, len(best_options)):
+            cell = best_options[option_index]
+            row = cell // n + 1
+            column = cell % n + 1
+
+            if can_place(row, column):
+                selected[row - 1][column - 1] = True
+                row_remaining[row - 1] = row_remaining[row - 1] - 1
+                column_remaining[column - 1] = column_remaining[column - 1] - 1
+
+                if search(assigned_count + 1):
+                    return True
+
+                selected[row - 1][column - 1] = False
+                row_remaining[row - 1] = row_remaining[row - 1] + 1
+                column_remaining[column - 1] = column_remaining[column - 1] + 1
+
+        assigned[best_tree] = False
+        return False
+
+    if search(0):
+        # Remove incorrect marks before placing the final tents.
+        for row in range(1, n + 1):
+            for column in range(1, n + 1):
+                if tile(row, column) != "tree":
+                    if not selected[row - 1][column - 1]:
+                        if tile(row, column) != "empty":
+                            clear(row, column)
+
+        for row in range(1, n + 1):
+            for column in range(1, n + 1):
+                if selected[row - 1][column - 1]:
+                    if tile(row, column) != "tent":
+                        tent(row, column)
+
+        popup("Puzzle solved.")
+    else:
+        popup("No valid arrangement satisfies all the puzzle rules.")
