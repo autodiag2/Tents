@@ -26,7 +26,7 @@ class GameScriptInterpreter {
   final ScriptGetCount getColumnTarget;
 
   static const int _maxSourceLines = 10000;
-  static const int _maxExecutionSteps = 2000000;
+  static const int _maxExecutionSteps = 10000000;
   static const int _maxLoopIterations = 100000;
   static const int _maxFunctionDepth = 128;
 
