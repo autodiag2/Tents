@@ -66,14 +66,14 @@ class GameScriptInterpreter {
     if (expression is _Literal) return expression.value;
     if (expression is _Variable) {
       if (!_variables.containsKey(expression.name)) {
-        _error(line, 'Unknown variable "' + expression.name + '".');
+        _error(line, 'Unknown variable "${expression.name}".');
       }
       return _variables[expression.name];
     }
     if (expression is _Unary) {
       final value = await _evaluate(expression.operand, line);
       if (expression.operator == 'not') return !_truthy(value);
-      if (value is! num) _error(line, 'Unary ' + expression.operator + ' requires a number.');
+      if (value is! num) _error(line, 'Unary ${expression.operator} requires a number.');
       return expression.operator == '-' ? -value : value;
     }
     if (expression is _Binary) {
@@ -117,7 +117,7 @@ class GameScriptInterpreter {
       case '//':
       case '%':
         if (left is! num || right is! num) {
-          _error(line, 'Operator "' + operator + '" requires numeric values.');
+          _error(line, 'Operator "$operator" requires numeric values.');
         }
         if ((operator == '/' || operator == '//' || operator == '%') && right == 0) {
           _error(line, 'Division by zero.');
@@ -157,7 +157,7 @@ class GameScriptInterpreter {
             return comparison >= 0;
         }
     }
-    _error(line, 'Unknown operator "' + operator + '".');
+    _error(line, 'Unknown operator "$operator".');
   }
 
   Future<Object?> _call(String name, List<Object?> arguments, int line) async {
@@ -228,7 +228,7 @@ class GameScriptInterpreter {
         if (arguments[0] is List) return (arguments[0] as List).length;
         _error(line, 'len() requires a string or range.');
     }
-    _error(line, 'Unknown instruction "' + name + '".');
+    _error(line, 'Unknown instruction "$name".');
   }
 
   int _coordinate(Object? value, int line) => _integer(value, line);
@@ -247,7 +247,7 @@ class GameScriptInterpreter {
 
   void _requireArgumentCount(String name, List<Object?> arguments, int expected, int line) {
     if (arguments.length != expected) {
-      _error(line, name + '() expects ' + expected.toString() + ' argument(s).');
+      _error(line, '$name() expects $expected argument(s).');
     }
   }
 
@@ -267,7 +267,7 @@ class GameScriptInterpreter {
   }
 
   Never _error(int line, String message) {
-    throw FormatException('Line ' + line.toString() + ': ' + message);
+    throw FormatException('Line $line: $message');
   }
 }
 
@@ -376,7 +376,7 @@ class _Parser {
       if (line.indent > indent) _error(line, 'Unexpected indentation.');
       if (line.text == 'else:' || line.text.startsWith('elif ')) {
         final branch = line.text.startsWith('elif ') ? 'elif' : 'else';
-        _error(line, 'Unexpected ' + branch + '.');
+        _error(line, 'Unexpected $branch.');
       }
       if (line.text.startsWith('if ')) {
         statements.add(_parseIf(indent));
@@ -387,7 +387,7 @@ class _Parser {
         final assignment = _findAssignment(line.text);
         if (assignment != null) {
           final name = assignment.$1;
-          if (_reservedNames.contains(name)) _error(line, '"' + name + '" is reserved.');
+          if (_reservedNames.contains(name)) _error(line, '"$name" is reserved.');
           final expression = _parseExpression(assignment.$2, line);
           statements.add(_Assignment(line.number, name, expression));
         } else {
@@ -424,7 +424,7 @@ class _Parser {
     final match = RegExp(r'^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+(.+):$').firstMatch(line.text);
     if (match == null) _error(line, 'Expected: for variable in range(...):');
     final variable = match.group(1)!;
-    if (_reservedNames.contains(variable)) _error(line, '"' + variable + '" is reserved.');
+    if (_reservedNames.contains(variable)) _error(line, '"$variable" is reserved.');
     final iterable = _parseExpression(match.group(2)!, line);
     final body = _parseSuite(indent, line);
     return _ForStatement(line.number, variable, iterable, body);
@@ -441,7 +441,7 @@ class _Parser {
     try {
       return _ExpressionParser(source).parse();
     } on FormatException catch (error) {
-      _error(line, error.message?.toString() ?? 'Invalid expression.');
+      _error(line, error.message.toString());
     }
   }
 
@@ -456,7 +456,7 @@ class _Parser {
     final match = RegExp(r'^(tent|cross|clear|wait)\s+(.+)$').firstMatch(text);
     if (match == null) return text;
     final parts = match.group(2)!.trim().split(RegExp(r'\s+'));
-    return match.group(1)! + '(' + parts.join(', ') + ')';
+    return '${match.group(1)}(${parts.join(', ')})';
   }
 
   String _stripComment(String line) {
@@ -519,7 +519,7 @@ class _Parser {
   }
 
   Never _error(_ScriptLine line, String message) {
-    throw FormatException('Line ' + line.number.toString() + ': ' + message);
+    throw FormatException('Line ${line.number}: $message');
   }
 }
 
@@ -536,7 +536,7 @@ class _ExpressionParser {
 
   _Expression parse() {
     final expression = _parseOr();
-    if (!_isAtEnd) _fail('Unexpected token "' + _peek.text + '".');
+    if (!_isAtEnd) _fail('Unexpected token "${_peek.text}".');
     return expression;
   }
 
@@ -735,7 +735,7 @@ class _ExpressionParser {
         position++;
         continue;
       }
-      throw FormatException('Unexpected character "' + character + '".');
+      throw FormatException('Unexpected character "$character".');
     }
     return tokens;
   }
