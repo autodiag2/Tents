@@ -4,6 +4,7 @@ typedef ScriptSetCell = FutureOr<void> Function(int row, int column, String stat
 typedef ScriptGetCell = String Function(int row, int column);
 typedef ScriptPopup = FutureOr<void> Function(String text);
 typedef ScriptWait = FutureOr<void> Function(int milliseconds);
+typedef ScriptGetCount = int Function(int index);
 
 class GameScriptInterpreter {
   GameScriptInterpreter({
@@ -12,6 +13,8 @@ class GameScriptInterpreter {
     required this.setCell,
     required this.showPopup,
     required this.wait,
+    required this.getRowTarget,
+    required this.getColumnTarget,
   });
 
   final int gridSize;
@@ -19,28 +22,51 @@ class GameScriptInterpreter {
   final ScriptSetCell setCell;
   final ScriptPopup showPopup;
   final ScriptWait wait;
+  final ScriptGetCount getRowTarget;
+  final ScriptGetCount getColumnTarget;
 
   static const int _maxSourceLines = 10000;
-  static const int _maxExecutionSteps = 10000;
-  static const int _maxLoopIterations = 5000;
+  static const int _maxExecutionSteps = 2000000;
+  static const int _maxLoopIterations = 100000;
+  static const int _maxFunctionDepth = 128;
+
   int _executionSteps = 0;
+  int _functionDepth = 0;
   late Map<String, Object?> _variables;
+  final List<Map<String, Object?>> _scopes = [];
+  final Map<String, _FunctionDefinition> _functions = {};
 
   Future<void> run(String source) async {
     final statements = _Parser(source).parse();
     _executionSteps = 0;
+    _functionDepth = 0;
     _variables = {'grid_size': gridSize, 'size': gridSize};
+    _scopes.clear();
+    _functions.clear();
+    for (final statement in statements) {
+      if (statement is _FunctionDefinition) {
+        _functions[statement.name] = statement;
+      }
+    }
     await _executeBlock(statements);
+  }
+
+  Future<void> _step(int line) async {
+    _executionSteps++;
+    if (_executionSteps > _maxExecutionSteps) {
+      _error(line, 'Script stopped: the execution limit was exceeded.');
+    }
+    if (_executionSteps % 250 == 0) {
+      await Future<void>.delayed(Duration.zero);
+    }
   }
 
   Future<void> _executeBlock(List<_Statement> statements) async {
     for (final statement in statements) {
-      _executionSteps++;
-      if (_executionSteps > _maxExecutionSteps) {
-        throw StateError('Script stopped: execution limit exceeded.');
-      }
+      await _step(statement.line);
       if (statement is _Assignment) {
-        _variables[statement.name] = await _evaluate(statement.value, statement.line);
+        final value = await _evaluate(statement.value, statement.line);
+        await _assign(statement.target, value, statement.line);
       } else if (statement is _ExpressionStatement) {
         await _evaluate(statement.expression, statement.line);
       } else if (statement is _IfStatement) {
@@ -48,32 +74,113 @@ class GameScriptInterpreter {
         await _executeBlock(_truthy(condition) ? statement.body : statement.elseBody);
       } else if (statement is _ForStatement) {
         final iterable = await _evaluate(statement.iterable, statement.line);
-        if (iterable is! List<Object?>) {
-          _error(statement.line, 'for loops require range(...).');
-        }
-        if (iterable.length > _maxLoopIterations) {
+        final values = _iterable(iterable, statement.line);
+        if (values.length > _maxLoopIterations) {
           _error(statement.line, 'Loop exceeds the $_maxLoopIterations iteration limit.');
         }
-        for (final value in iterable) {
-          _variables[statement.variable] = value;
-          await _executeBlock(statement.body);
+        for (final value in values) {
+          _assignVariable(statement.variable, value);
+          try {
+            await _executeBlock(statement.body);
+          } on _BreakSignal {
+            break;
+          }
         }
+      } else if (statement is _WhileStatement) {
+        var iterations = 0;
+        while (_truthy(await _evaluate(statement.condition, statement.line))) {
+          iterations++;
+          if (iterations > _maxLoopIterations) {
+            _error(statement.line, 'while loop exceeds the $_maxLoopIterations iteration limit.');
+          }
+          try {
+            await _executeBlock(statement.body);
+          } on _BreakSignal {
+            break;
+          }
+        }
+      } else if (statement is _FunctionDefinition) {
+        _functions[statement.name] = statement;
+      } else if (statement is _ReturnStatement) {
+        if (_scopes.isEmpty) {
+          _error(statement.line, 'return can only be used inside a function.');
+        }
+        final value = statement.value == null
+            ? null
+            : await _evaluate(statement.value!, statement.line);
+        throw _ReturnSignal(value);
+      } else if (statement is _BreakStatement) {
+        throw _BreakSignal();
       }
     }
   }
 
+  List<Object?> _iterable(Object? value, int line) {
+    if (value is List) return value.cast<Object?>();
+    if (value is String) return value.runes.map((rune) => String.fromCharCode(rune)).toList();
+    _error(line, 'for loops require a list, string or range().');
+  }
+
+  Object? _readVariable(String name, int line) {
+    for (final scope in _scopes.reversed) {
+      if (scope.containsKey(name)) return scope[name];
+    }
+    if (_variables.containsKey(name)) return _variables[name];
+    _error(line, 'Unknown variable "$name".');
+  }
+
+  void _assignVariable(String name, Object? value) {
+    if (_scopes.isEmpty) {
+      _variables[name] = value;
+    } else {
+      _scopes.last[name] = value;
+    }
+  }
+
+  Future<void> _assign(_Expression target, Object? value, int line) async {
+    if (target is _Variable) {
+      _assignVariable(target.name, value);
+      return;
+    }
+    if (target is _Index) {
+      final collection = await _evaluate(target.target, line);
+      final index = _integer(await _evaluate(target.index, line), line);
+      if (collection is! List) {
+        _error(line, 'Indexed assignment requires a list.');
+      }
+      final normalizedIndex = _normalizeIndex(index, collection.length, line);
+      collection[normalizedIndex] = value;
+      return;
+    }
+    _error(line, 'Invalid assignment target.');
+  }
+
   Future<Object?> _evaluate(_Expression expression, int line) async {
     if (expression is _Literal) return expression.value;
-    if (expression is _Variable) {
-      if (!_variables.containsKey(expression.name)) {
-        _error(line, 'Unknown variable "${expression.name}".');
+    if (expression is _Variable) return _readVariable(expression.name, line);
+    if (expression is _ListLiteral) {
+      final values = <Object?>[];
+      for (final item in expression.items) {
+        values.add(await _evaluate(item, line));
       }
-      return _variables[expression.name];
+      return values;
+    }
+    if (expression is _Index) {
+      final target = await _evaluate(expression.target, line);
+      final index = _integer(await _evaluate(expression.index, line), line);
+      if (target is List) {
+        return target[_normalizeIndex(index, target.length, line)];
+      }
+      if (target is String) {
+        final characters = target.runes.toList();
+        return String.fromCharCode(characters[_normalizeIndex(index, characters.length, line)]);
+      }
+      _error(line, 'Indexing requires a list or string.');
     }
     if (expression is _Unary) {
       final value = await _evaluate(expression.operand, line);
       if (expression.operator == 'not') return !_truthy(value);
-      if (value is! num) _error(line, 'Unary ${expression.operator} requires a number.');
+      if (value is! num) _error(line, 'Unary @${expression.operator} requires a number.');
       return expression.operator == '-' ? -value : value;
     }
     if (expression is _Binary) {
@@ -97,6 +204,14 @@ class GameScriptInterpreter {
     _error(line, 'Unsupported expression.');
   }
 
+  int _normalizeIndex(int index, int length, int line) {
+    final normalized = index < 0 ? length + index : index;
+    if (normalized < 0 || normalized >= length) {
+      _error(line, 'List index $index is out of range.');
+    }
+    return normalized;
+  }
+
   Object? _applyBinary(String operator, Object? left, Object? right, int line) {
     switch (operator) {
       case '==':
@@ -106,11 +221,12 @@ class GameScriptInterpreter {
       case 'in':
         if (right is List) return right.contains(left);
         if (right is String && left is String) return right.contains(left);
-        _error(line, 'The right side of "in" must be a string or range.');
+        _error(line, 'The right side of "in" must be a string or list.');
       case '+':
         if (left is String && right is String) return left + right;
         if (left is num && right is num) return left + right;
-        _error(line, 'The + operator requires two numbers or two strings.');
+        if (left is List && right is List) return [...left, ...right];
+        _error(line, 'The + operator requires matching numbers, strings or lists.');
       case '-':
       case '*':
       case '/':
@@ -180,6 +296,40 @@ class GameScriptInterpreter {
           current += step;
         }
         return values;
+      case 'len':
+        _requireArgumentCount(name, arguments, 1, line);
+        if (arguments[0] is String) return (arguments[0] as String).runes.length;
+        if (arguments[0] is List) return (arguments[0] as List).length;
+        _error(line, 'len() requires a string or list.');
+      case 'append':
+        _requireArgumentCount(name, arguments, 2, line);
+        if (arguments[0] is! List) _error(line, 'append() first argument must be a list.');
+        (arguments[0] as List).add(arguments[1]);
+        return null;
+      case 'pop':
+        if (arguments.isEmpty || arguments.length > 2) {
+          _error(line, 'pop() expects a list and an optional index.');
+        }
+        if (arguments[0] is! List) _error(line, 'pop() first argument must be a list.');
+        final list = arguments[0] as List;
+        if (list.isEmpty) _error(line, 'Cannot pop from an empty list.');
+        final index = arguments.length == 2
+            ? _normalizeIndex(_integer(arguments[1], line), list.length, line)
+            : list.length - 1;
+        return list.removeAt(index);
+      case 'abs':
+        _requireArgumentCount(name, arguments, 1, line);
+        if (arguments[0] is! num) _error(line, 'abs() requires a number.');
+        return (arguments[0] as num).abs();
+      case 'min':
+      case 'max':
+        if (arguments.isEmpty || arguments.any((value) => value is! num)) {
+          _error(line, '$name() requires one or more numbers.');
+        }
+        final values = arguments.cast<num>();
+        return name == 'min'
+            ? values.reduce((left, right) => left < right ? left : right)
+            : values.reduce((left, right) => left > right ? left : right);
       case 'tile':
       case 'get_tile':
         _requireArgumentCount(name, arguments, 2, line);
@@ -187,6 +337,16 @@ class GameScriptInterpreter {
         final column = _coordinate(arguments[1], line);
         _validateCell(row, column, line);
         return getCell(row, column);
+      case 'row_target':
+        _requireArgumentCount(name, arguments, 1, line);
+        final row = _coordinate(arguments[0], line);
+        if (row < 1 || row > gridSize) _error(line, 'Row must be between 1 and $gridSize.');
+        return getRowTarget(row);
+      case 'column_target':
+        _requireArgumentCount(name, arguments, 1, line);
+        final column = _coordinate(arguments[0], line);
+        if (column < 1 || column > gridSize) _error(line, 'Column must be between 1 and $gridSize.');
+        return getColumnTarget(column);
       case 'tent':
       case 'cross':
       case 'clear':
@@ -222,13 +382,33 @@ class GameScriptInterpreter {
           if (parsed != null) return parsed;
         }
         _error(line, 'int() requires an integer-compatible value.');
-      case 'len':
-        _requireArgumentCount(name, arguments, 1, line);
-        if (arguments[0] is String) return (arguments[0] as String).length;
-        if (arguments[0] is List) return (arguments[0] as List).length;
-        _error(line, 'len() requires a string or range.');
     }
-    _error(line, 'Unknown instruction "$name".');
+
+    final function = _functions[name];
+    if (function == null) _error(line, 'Unknown instruction or function "$name".');
+    if (arguments.length != function.parameters.length) {
+      _error(line, '$name() expects @${function.parameters.length} argument(s).');
+    }
+    if (_functionDepth >= _maxFunctionDepth) {
+      _error(line, 'Function recursion exceeds $_maxFunctionDepth calls.');
+    }
+
+    final scope = <String, Object?>{};
+    for (var index = 0; index < arguments.length; index++) {
+      scope[function.parameters[index]] = arguments[index];
+    }
+
+    _scopes.add(scope);
+    _functionDepth++;
+    try {
+      await _executeBlock(function.body);
+    } on _ReturnSignal catch (signal) {
+      return signal.value;
+    } finally {
+      _functionDepth--;
+      _scopes.removeLast();
+    }
+    return null;
   }
 
   int _coordinate(Object? value, int line) => _integer(value, line);
@@ -277,8 +457,8 @@ abstract class _Statement {
 }
 
 class _Assignment extends _Statement {
-  const _Assignment(super.line, this.name, this.value);
-  final String name;
+  const _Assignment(super.line, this.target, this.value);
+  final _Expression target;
   final _Expression value;
 }
 
@@ -301,6 +481,35 @@ class _ForStatement extends _Statement {
   final List<_Statement> body;
 }
 
+class _WhileStatement extends _Statement {
+  const _WhileStatement(super.line, this.condition, this.body);
+  final _Expression condition;
+  final List<_Statement> body;
+}
+
+class _FunctionDefinition extends _Statement {
+  const _FunctionDefinition(super.line, this.name, this.parameters, this.body);
+  final String name;
+  final List<String> parameters;
+  final List<_Statement> body;
+}
+
+class _ReturnStatement extends _Statement {
+  const _ReturnStatement(super.line, this.value);
+  final _Expression? value;
+}
+
+class _BreakStatement extends _Statement {
+  const _BreakStatement(super.line);
+}
+
+class _ReturnSignal {
+  const _ReturnSignal(this.value);
+  final Object? value;
+}
+
+class _BreakSignal {}
+
 abstract class _Expression {
   const _Expression();
 }
@@ -310,9 +519,20 @@ class _Literal extends _Expression {
   final Object? value;
 }
 
+class _ListLiteral extends _Expression {
+  const _ListLiteral(this.items);
+  final List<_Expression> items;
+}
+
 class _Variable extends _Expression {
   const _Variable(this.name);
   final String name;
+}
+
+class _Index extends _Expression {
+  const _Index(this.target, this.index);
+  final _Expression target;
+  final _Expression index;
 }
 
 class _Unary extends _Expression {
@@ -347,13 +567,13 @@ class _Parser {
     if (rawLines.length > GameScriptInterpreter._maxSourceLines) {
       throw const FormatException('Script exceeds the 10000 line limit.');
     }
-    for (var i = 0; i < rawLines.length; i++) {
-      final withoutComment = _stripComment(rawLines[i]);
+    for (var index = 0; index < rawLines.length; index++) {
+      final withoutComment = _stripComment(rawLines[index]);
       final trimmed = withoutComment.trimLeft();
       final content = trimmed.trimRight();
       if (content.isEmpty) continue;
       final indent = withoutComment.length - trimmed.length;
-      _lines.add(_ScriptLine(indent, _normaliseCommand(content), i + 1));
+      _lines.add(_ScriptLine(indent, _normaliseCommand(content), index + 1));
     }
   }
 
@@ -361,11 +581,11 @@ class _Parser {
   int _position = 0;
 
   List<_Statement> parse() {
-    final result = _parseBlock(0);
+    final statements = _parseBlock(0);
     if (_position < _lines.length) {
       _error(_lines[_position], 'Unexpected indentation.');
     }
-    return result;
+    return statements;
   }
 
   List<_Statement> _parseBlock(int indent) {
@@ -382,14 +602,29 @@ class _Parser {
         statements.add(_parseIf(indent));
       } else if (line.text.startsWith('for ')) {
         statements.add(_parseFor(indent));
+      } else if (line.text.startsWith('while ')) {
+        statements.add(_parseWhile(indent));
+      } else if (line.text.startsWith('def ')) {
+        statements.add(_parseFunction(indent));
+      } else if (line.text == 'break') {
+        _position++;
+        statements.add(_BreakStatement(line.number));
+      } else if (line.text == 'return' || line.text.startsWith('return ')) {
+        _position++;
+        final expression = line.text == 'return'
+            ? null
+            : _parseExpression(line.text.substring(7).trim(), line);
+        statements.add(_ReturnStatement(line.number, expression));
       } else {
         _position++;
         final assignment = _findAssignment(line.text);
         if (assignment != null) {
-          final name = assignment.$1;
-          if (_reservedNames.contains(name)) _error(line, '"$name" is reserved.');
-          final expression = _parseExpression(assignment.$2, line);
-          statements.add(_Assignment(line.number, name, expression));
+          final target = _parseExpression(assignment.$1, line);
+          if (target is! _Variable && target is! _Index) {
+            _error(line, 'Assignment target must be a variable or list index.');
+          }
+          final value = _parseExpression(assignment.$2, line);
+          statements.add(_Assignment(line.number, target, value));
         } else {
           statements.add(_ExpressionStatement(line.number, _parseExpression(line.text, line)));
         }
@@ -422,12 +657,45 @@ class _Parser {
   _ForStatement _parseFor(int indent) {
     final line = _lines[_position++];
     final match = RegExp(r'^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+(.+):$').firstMatch(line.text);
-    if (match == null) _error(line, 'Expected: for variable in range(...):');
+    if (match == null) _error(line, 'Expected: for variable in iterable:');
     final variable = match.group(1)!;
     if (_reservedNames.contains(variable)) _error(line, '"$variable" is reserved.');
     final iterable = _parseExpression(match.group(2)!, line);
     final body = _parseSuite(indent, line);
     return _ForStatement(line.number, variable, iterable, body);
+  }
+
+  _WhileStatement _parseWhile(int indent) {
+    final line = _lines[_position++];
+    if (!line.text.endsWith(':')) _error(line, 'while statement must end with ":".');
+    final conditionText = line.text.substring(6, line.text.length - 1).trim();
+    if (conditionText.isEmpty) _error(line, 'Condition cannot be empty.');
+    final condition = _parseExpression(conditionText, line);
+    final body = _parseSuite(indent, line);
+    return _WhileStatement(line.number, condition, body);
+  }
+
+  _FunctionDefinition _parseFunction(int indent) {
+    final line = _lines[_position++];
+    final match = RegExp(r'^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*:$').firstMatch(line.text);
+    if (match == null) _error(line, 'Expected: def function_name(parameters):');
+    final name = match.group(1)!;
+    if (_reservedNames.contains(name)) _error(line, '"$name" is reserved.');
+    final parameterText = match.group(2)!.trim();
+    final parameters = parameterText.isEmpty
+        ? <String>[]
+        : parameterText.split(',').map((value) => value.trim()).toList();
+    if (parameters.any((value) => !RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(value))) {
+      _error(line, 'Function parameters must be variable names.');
+    }
+    if (parameters.toSet().length != parameters.length) {
+      _error(line, 'Function parameters must be unique.');
+    }
+    if (parameters.any(_reservedNames.contains)) {
+      _error(line, 'Function parameter names cannot be reserved words.');
+    }
+    final body = _parseSuite(indent, line);
+    return _FunctionDefinition(line.number, name, parameters, body);
   }
 
   List<_Statement> _parseSuite(int parentIndent, _ScriptLine header) {
@@ -446,24 +714,26 @@ class _Parser {
   }
 
   static final Set<String> _reservedNames = {
-    'if', 'else', 'elif', 'for', 'in', 'and', 'or', 'not',
-    'True', 'False', 'None', 'range', 'tile', 'get_tile',
-    'tent', 'cross', 'clear', 'wait', 'popup', 'message',
-    'str', 'int', 'len', 'grid_size', 'size',
+    'if', 'else', 'elif', 'for', 'while', 'def', 'return', 'break',
+    'in', 'and', 'or', 'not', 'True', 'False', 'None',
+    'range', 'tile', 'get_tile', 'tent', 'cross', 'clear', 'wait',
+    'popup', 'message', 'str', 'int', 'len', 'append', 'pop',
+    'abs', 'min', 'max', 'row_target', 'column_target',
+    'grid_size', 'size',
   };
 
   String _normaliseCommand(String text) {
     final match = RegExp(r'^(tent|cross|clear|wait)\s+(.+)$').firstMatch(text);
     if (match == null) return text;
     final parts = match.group(2)!.trim().split(RegExp(r'\s+'));
-    return '${match.group(1)}(${parts.join(', ')})';
+    return '@${match.group(1)}(@${parts.join(', ')})';
   }
 
   String _stripComment(String line) {
     String? quote;
     var escaped = false;
-    for (var i = 0; i < line.length; i++) {
-      final character = line[i];
+    for (var index = 0; index < line.length; index++) {
+      final character = line[index];
       if (quote != null) {
         if (escaped) {
           escaped = false;
@@ -475,7 +745,7 @@ class _Parser {
       } else if (character == "'" || character == '"') {
         quote = character;
       } else if (character == '#') {
-        return line.substring(0, i);
+        return line.substring(0, index);
       }
     }
     return line;
@@ -483,10 +753,11 @@ class _Parser {
 
   (String, String)? _findAssignment(String text) {
     String? quote;
-    var depth = 0;
+    var parenthesisDepth = 0;
+    var bracketDepth = 0;
     var escaped = false;
-    for (var i = 0; i < text.length; i++) {
-      final character = text[i];
+    for (var index = 0; index < text.length; index++) {
+      final character = text[index];
       if (quote != null) {
         if (escaped) {
           escaped = false;
@@ -500,18 +771,23 @@ class _Parser {
       if (character == "'" || character == '"') {
         quote = character;
       } else if (character == '(') {
-        depth++;
+        parenthesisDepth++;
       } else if (character == ')') {
-        depth--;
-      } else if (character == '=' && depth == 0) {
-        final previous = i > 0 ? text[i - 1] : '';
-        final next = i + 1 < text.length ? text[i + 1] : '';
+        parenthesisDepth--;
+      } else if (character == '[') {
+        bracketDepth++;
+      } else if (character == ']') {
+        bracketDepth--;
+      } else if (character == '=' && parenthesisDepth == 0 && bracketDepth == 0) {
+        final previous = index > 0 ? text[index - 1] : '';
+        final next = index + 1 < text.length ? text[index + 1] : '';
         if (previous != '=' && previous != '!' && previous != '<' && previous != '>' && next != '=') {
-          final name = text.substring(0, i).trim();
-          if (!RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(name)) {
-            throw const FormatException('Assignment must use a variable name.');
+          final target = text.substring(0, index).trim();
+          final value = text.substring(index + 1).trim();
+          if (target.isEmpty || value.isEmpty) {
+            throw const FormatException('Assignment requires a target and a value.');
           }
-          return (name, text.substring(i + 1).trim());
+          return (target, value);
         }
       }
     }
@@ -519,7 +795,7 @@ class _Parser {
   }
 
   Never _error(_ScriptLine line, String message) {
-    throw FormatException('Line ${line.number}: $message');
+    throw FormatException('Line @${line.number}: $message');
   }
 }
 
@@ -536,7 +812,7 @@ class _ExpressionParser {
 
   _Expression parse() {
     final expression = _parseOr();
-    if (!_isAtEnd) _fail('Unexpected token "${_peek.text}".');
+    if (!_isAtEnd) _fail('Unexpected token "@${_peek.text}".');
     return expression;
   }
 
@@ -590,7 +866,17 @@ class _ExpressionParser {
 
   _Expression _parseUnary() {
     if (_match('+', '-')) return _Unary(_previous.text, _parseUnary());
-    return _parsePrimary();
+    return _parsePostfix();
+  }
+
+  _Expression _parsePostfix() {
+    var expression = _parsePrimary();
+    while (_match('[')) {
+      final index = _parseOr();
+      _consume(']', 'Expected "]" after list index.');
+      expression = _Index(expression, index);
+    }
+    return expression;
   }
 
   _Expression _parsePrimary() {
@@ -602,6 +888,16 @@ class _ExpressionParser {
     if (_match('True')) return const _Literal(true);
     if (_match('False')) return const _Literal(false);
     if (_match('None')) return const _Literal(null);
+    if (_match('[')) {
+      final items = <_Expression>[];
+      if (!_check(']')) {
+        do {
+          items.add(_parseOr());
+        } while (_match(',') && !_check(']'));
+      }
+      _consume(']', 'Expected "]" after list items.');
+      return _ListLiteral(items);
+    }
     if (_matchKind('identifier')) {
       final name = _previous.text;
       if (!_match('(')) return _Variable(name);
@@ -730,8 +1026,8 @@ class _ExpressionParser {
         position += 2;
         continue;
       }
-      if ('+-*/%<>() ,'.contains(character)) {
-        if (character != ' ') tokens.add(_Token(character));
+      if ('+-*/%<>()[],'.contains(character)) {
+        tokens.add(_Token(character));
         position++;
         continue;
       }
