@@ -88,7 +88,6 @@ else:
 
   test('supports list literals, nested index mutation, while, break and functions', () async {
     final messages = <String>[];
-    final matrix = <List<String>>[];
     final interpreter = GameScriptInterpreter(
       gridSize: 3,
       getCell: (_, __) => 'empty',
@@ -119,7 +118,6 @@ popup(str(result) + ":" + str(len(numbers)) + ":" + matrix[1][0] + ":" + str(cou
 ''');
 
     expect(messages, ['120:3:tent:3']);
-    expect(matrix, isEmpty);
   });
 
   test('exposes row and column target values to functions and expressions', () async {
