@@ -531,32 +531,39 @@ class _GameViewState extends ConsumerState<GameView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Scripts use a safe Python-style syntax. Indentation defines code blocks. Variables, arithmetic, comparisons, if/elif/else and for loops are supported.'),
+              Text('Scripts use a safe Python-style language. Indentation defines blocks. The language supports variables, expressions, lists, nested indexing, functions, recursion, for/while loops, break, return and if/elif/else.'),
               SizedBox(height: 12),
               Text('Example', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 6),
               SelectableText(
+                'def mark_if_empty(row, col):\n'
+                '    state = tile(row, col)\n'
+                '    if state == "empty":\n'
+                '        tent(row, col)\n'
+                '    return state\n'
+                '\n'
+                'positions = []\n'
                 'for row in range(1, grid_size + 1):\n'
                 '    for col in range(1, grid_size + 1):\n'
-                '        state = tile(row, col)\n'
+                '        state = mark_if_empty(row, col)\n'
                 '        if state == "empty":\n'
-                '            tent(row, col)\n'
-                '        elif state == "tree":\n'
-                '            popup("Tree at " + str(row) + ", " + str(col))\n'
-                '        else:\n'
-                '            popup("Cell is " + state)',
+                '            append(positions, [row, col])',
                 style: TextStyle(fontFamily: 'monospace', fontSize: 12),
               ),
               SizedBox(height: 12),
-              Text('Instructions', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Game instructions', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 6),
-              Text('tent(row, col) places a tent. cross(row, col) marks a cell with a cross. clear(row, col) empties a cell. wait(milliseconds) pauses execution. popup(text) displays a message. tile(row, col) returns the current tile state as "tree", "tent", "cross" or "empty".'),
+              Text('tent(row, col) places a tent. cross(row, col) marks a cross. clear(row, col) empties a cell. wait(milliseconds) pauses. popup(text) displays a message. tile(row, col) returns tree, tent, cross or empty. row_target(row) and column_target(col) return the clues for a row or column.'),
               SizedBox(height: 12),
-              Text('Variables and expressions', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Lists and functions', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 6),
-              Text('Assign variables with name = expression. Use variables or expressions in every instruction argument, such as tent(row, col + 1). grid_size contains the board size. Coordinates start at 1. range(stop), range(start, stop) and range(start, stop, step) are available. str(value), int(value) and len(value) are supported.'),
+              Text('Create lists with values = [] or values = [1, 2]. Read and update with values[index] and matrix[row][column]. append(list, value) adds an item. pop(list) removes and returns the last item; pop(list, index) removes a chosen item. Define functions with def name(parameters): and return a value with return expression. Recursive functions are supported.'),
               SizedBox(height: 12),
-              Text('Conditions support ==, !=, <, <=, >, >=, in, and, or and not. Use # for comments. Scripted cell changes count as moves. A solved board automatically opens the completion screen.'),
+              Text('Control flow and expressions', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text('Use for item in range(start, stop):, while condition:, break and if/elif/else. Operators include +, -, *, /, //, %, ==, !=, <, <=, >, >=, in, and, or and not. Built-ins include len(), abs(), min(), max(), int() and str(). Coordinates are 1-based. Use # for comments.'),
+              SizedBox(height: 12),
+              Text('Execution has safety limits on total operations, loop iterations and recursion depth. Scripted cell changes count as moves. When the resulting board is solved, the normal completion screen opens.'),
             ],
           ),
         ),
@@ -615,6 +622,8 @@ class _GameViewState extends ConsumerState<GameView> {
       },
       showPopup: _showScriptPopup,
       wait: (milliseconds) => Future<void>.delayed(Duration(milliseconds: milliseconds)),
+      getRowTarget: (row) => level.rowTentCounts[row - 1],
+      getColumnTarget: (column) => level.colTentCounts[column - 1],
     );
 
     await interpreter.run(source);
