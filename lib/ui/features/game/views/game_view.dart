@@ -7,6 +7,7 @@ import 'package:tents/ui/core/theme/app_colors.dart';
 import 'package:tents/ui/core/widgets/tangible_button.dart';
 import 'package:tents/ui/core/widgets/tents_widgets.dart';
 import 'package:tents/ui/features/game/view_models/game_view_model.dart';
+import 'package:tents/ui/features/game/views/script_runner_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:tents/ui/providers.dart';
 
@@ -162,6 +163,17 @@ class _GameViewState extends ConsumerState<GameView> {
               _verticalDivider(),
               _stat('Tents', '$tentCount/${level.totalTrees}', Icons.cabin_rounded),
             ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: TextButton.icon(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (context) => ScriptRunnerDialog(onRun: _runScript),
+            ),
+            icon: const Icon(Icons.code),
+            label: const Text('Scripts'),
           ),
         ),
         Expanded(
@@ -496,6 +508,49 @@ class _GameViewState extends ConsumerState<GameView> {
         ],
       ],
     );
+  }
+
+  Future<void> _runScript(String source) async {
+    final level = ref.read(gameViewModelProvider).level;
+    if (level == null || ref.read(gameViewModelProvider).isComplete) throw Exception('No active game is available.');
+    final commands = <({String action, int row, int col, int delay})>[];
+    final lines = source.split(RegExp(r'\r?\n'));
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty || line.startsWith('#')) continue;
+      final parts = line.split(RegExp(r'\s+'));
+      if (parts.first == 'wait' && parts.length == 2) {
+        final delay = int.tryParse(parts[1]);
+        if (delay == null || delay < 0 || delay > 10000) throw FormatException('Line ${i + 1}: wait must be 0–10000 ms.');
+        commands.add((action: 'wait', row: 0, col: 0, delay: delay));
+        continue;
+      }
+      if (parts.length != 3 || !{'tent', 'cross', 'clear'}.contains(parts.first)) {
+        throw FormatException('Line ${i + 1}: expected tent, cross, clear or wait.');
+      }
+      final row = int.tryParse(parts[1]);
+      final col = int.tryParse(parts[2]);
+      if (row == null || col == null || row < 1 || col < 1 || row > level.gridSize || col > level.gridSize) {
+        throw FormatException('Line ${i + 1}: coordinates must be between 1 and ${level.gridSize}.');
+      }
+      if (level.trees[row - 1][col - 1]) throw FormatException('Line ${i + 1}: that cell contains a tree.');
+      commands.add((action: parts.first, row: row - 1, col: col - 1, delay: 0));
+    }
+    final notifier = ref.read(gameViewModelProvider.notifier);
+    for (final command in commands) {
+      if (!mounted || ref.read(gameViewModelProvider).isComplete) return;
+      if (command.action == 'wait') {
+        await Future.delayed(Duration(milliseconds: command.delay));
+      } else {
+        final cell = switch (command.action) {
+          'tent' => CellState.tent,
+          'cross' => CellState.x,
+          _ => CellState.empty,
+        };
+        notifier.setCellState(command.row, command.col, cell);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+      }
+    }
   }
 
   void _handlePan(Offset localPosition, BoxConstraints constraints, int N, {bool isStart = false}) {
