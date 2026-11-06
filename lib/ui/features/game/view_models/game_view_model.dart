@@ -356,7 +356,7 @@ class GameViewModel extends StateNotifier<GameViewModelState> {
     _persistInProgress();
   }
 
-  void setCellState(int r, int c, CellState next) {
+  void setCellState(int r, int c, CellState next, {bool countMove = false}) {
     final level = state.level;
     if (state.isComplete || level == null) return;
     if (level.trees[r][c] || state.board[r][c] == CellState.tree) return;
@@ -385,7 +385,7 @@ class GameViewModel extends StateNotifier<GameViewModelState> {
 
     state = state.copyWith(
       board: newBoard,
-      moveCount: state.moveCount,
+      moveCount: state.moveCount + (countMove ? 1 : 0),
       isComplete: isComplete,
       canUndo: _undoStack.isNotEmpty,
       clearHint: true,
