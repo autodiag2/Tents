@@ -16,6 +16,8 @@ void main() {
       },
       showPopup: messages.add,
       wait: (_) {},
+      getRowTarget: (_) => 0,
+      getColumnTarget: (_) => 0,
     );
 
     await interpreter.run('''
@@ -48,6 +50,8 @@ for row in range(1, grid_size + 1):
       },
       showPopup: messages.add,
       wait: (_) {},
+      getRowTarget: (_) => 0,
+      getColumnTarget: (_) => 0,
     );
 
     await interpreter.run('''
@@ -70,6 +74,8 @@ else:
       setCell: (_, __, ___) {},
       showPopup: (_) {},
       wait: (_) {},
+      getRowTarget: (_) => 0,
+      getColumnTarget: (_) => 0,
     );
 
     expect(
