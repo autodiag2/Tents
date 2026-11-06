@@ -68,7 +68,7 @@ class _ScriptRunnerDialogState extends State<ScriptRunnerDialog> {
         child: _loading ? const Center(child: CircularProgressIndicator()) : SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (names.isNotEmpty) DropdownButtonFormField<String>(
-              value: names.contains(_selected) ? _selected : null,
+              initialValue: names.contains(_selected) ? _selected : null,
               decoration: const InputDecoration(labelText: 'Saved script'),
               hint: const Text('Select a script'),
               items: names.map((name) => DropdownMenuItem(value: name, child: Text(name))).toList(),
