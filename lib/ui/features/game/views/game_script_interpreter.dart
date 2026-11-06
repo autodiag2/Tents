@@ -122,8 +122,8 @@ class GameScriptInterpreter {
   }
 
   Object? _readVariable(String name, int line) {
-    for (final scope in _scopes.reversed) {
-      if (scope.containsKey(name)) return scope[name];
+    if (_scopes.isNotEmpty && _scopes.last.containsKey(name)) {
+      return _scopes.last[name];
     }
     if (_variables.containsKey(name)) return _variables[name];
     _error(line, 'Unknown variable "$name".');
@@ -404,6 +404,8 @@ class GameScriptInterpreter {
       await _executeBlock(function.body);
     } on _ReturnSignal catch (signal) {
       return signal.value;
+    } on _BreakSignal {
+      _error(line, 'break cannot escape a function body.');
     } finally {
       _functionDepth--;
       _scopes.removeLast();
