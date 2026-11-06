@@ -8,6 +8,7 @@ import 'package:tents/ui/core/widgets/tangible_button.dart';
 import 'package:tents/ui/core/widgets/tents_widgets.dart';
 import 'package:tents/ui/features/game/view_models/game_view_model.dart';
 import 'package:tents/ui/features/game/views/script_runner_dialog.dart';
+import 'package:tents/ui/features/game/views/game_script_interpreter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:tents/ui/providers.dart';
 
@@ -167,13 +168,23 @@ class _GameViewState extends ConsumerState<GameView> {
         ),
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: TextButton.icon(
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (context) => ScriptRunnerDialog(onRun: _runScript),
-            ),
-            icon: const Icon(Icons.code),
-            label: const Text('Scripts'),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton.icon(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (context) => ScriptRunnerDialog(onRun: _runScript),
+                ),
+                icon: const Icon(Icons.code),
+                label: const Text('Scripts'),
+              ),
+              IconButton(
+                tooltip: 'Script help',
+                onPressed: _showScriptHelp,
+                icon: const Icon(Icons.help_outline),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -510,46 +521,106 @@ class _GameViewState extends ConsumerState<GameView> {
     );
   }
 
+  Future<void> _showScriptHelp() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Script language help'),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Scripts use a safe Python-style syntax. Indentation defines code blocks. Variables, arithmetic, comparisons, if/elif/else and for loops are supported.'),
+              SizedBox(height: 12),
+              Text('Example', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              SelectableText(
+                'for row in range(1, grid_size + 1):\n'
+                '    for col in range(1, grid_size + 1):\n'
+                '        state = tile(row, col)\n'
+                '        if state == "empty":\n'
+                '            tent(row, col)\n'
+                '        elif state == "tree":\n'
+                '            popup("Tree at " + str(row) + ", " + str(col))\n'
+                '        else:\n'
+                '            popup("Cell is " + state)',
+                style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+              SizedBox(height: 12),
+              Text('Instructions', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text('tent(row, col) places a tent. cross(row, col) marks a cell with a cross. clear(row, col) empties a cell. wait(milliseconds) pauses execution. popup(text) displays a message. tile(row, col) returns the current tile state as "tree", "tent", "cross" or "empty".'),
+              SizedBox(height: 12),
+              Text('Variables and expressions', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text('Assign variables with name = expression. Use variables or expressions in every instruction argument, such as tent(row, col + 1). grid_size contains the board size. Coordinates start at 1. range(stop), range(start, stop) and range(start, stop, step) are available. str(value), int(value) and len(value) are supported.'),
+              SizedBox(height: 12),
+              Text('Conditions support ==, !=, <, <=, >, >=, in, and, or and not. Use # for comments. Scripted cell changes count as moves. A solved board automatically opens the completion screen.'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showScriptPopup(String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Script'),
+        content: SelectableText(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _runScript(String source) async {
-    final level = ref.read(gameViewModelProvider).level;
-    if (level == null || ref.read(gameViewModelProvider).isComplete) throw Exception('No active game is available.');
-    final commands = <({String action, int row, int col, int delay})>[];
-    final lines = source.split(RegExp(r'\r?\n'));
-    for (var i = 0; i < lines.length; i++) {
-      final line = lines[i].trim();
-      if (line.isEmpty || line.startsWith('#')) continue;
-      final parts = line.split(RegExp(r'\s+'));
-      if (parts.first == 'wait' && parts.length == 2) {
-        final delay = int.tryParse(parts[1]);
-        if (delay == null || delay < 0 || delay > 10000) throw FormatException('Line ${i + 1}: wait must be 0–10000 ms.');
-        commands.add((action: 'wait', row: 0, col: 0, delay: delay));
-        continue;
-      }
-      if (parts.length != 3 || !{'tent', 'cross', 'clear'}.contains(parts.first)) {
-        throw FormatException('Line ${i + 1}: expected tent, cross, clear or wait.');
-      }
-      final row = int.tryParse(parts[1]);
-      final col = int.tryParse(parts[2]);
-      if (row == null || col == null || row < 1 || col < 1 || row > level.gridSize || col > level.gridSize) {
-        throw FormatException('Line ${i + 1}: coordinates must be between 1 and ${level.gridSize}.');
-      }
-      if (level.trees[row - 1][col - 1]) throw FormatException('Line ${i + 1}: that cell contains a tree.');
-      commands.add((action: parts.first, row: row - 1, col: col - 1, delay: 0));
+    final initialState = ref.read(gameViewModelProvider);
+    final level = initialState.level;
+    if (level == null || initialState.isComplete) {
+      throw StateError('No active game is available.');
     }
+
     final notifier = ref.read(gameViewModelProvider.notifier);
-    for (final command in commands) {
-      if (!mounted || ref.read(gameViewModelProvider).isComplete) return;
-      if (command.action == 'wait') {
-        await Future.delayed(Duration(milliseconds: command.delay));
-      } else {
-        final cell = switch (command.action) {
+    final interpreter = GameScriptInterpreter(
+      gridSize: level.gridSize,
+      getCell: (row, column) {
+        final board = ref.read(gameViewModelProvider).board;
+        return switch (board[row - 1][column - 1]) {
+          CellState.tree => 'tree',
+          CellState.tent => 'tent',
+          CellState.x => 'cross',
+          CellState.empty => 'empty',
+        };
+      },
+      setCell: (row, column, state) async {
+        final current = ref.read(gameViewModelProvider).board[row - 1][column - 1];
+        if (current == CellState.tree) {
+          throw FormatException('Cannot change a tree at row $row, column $column.');
+        }
+        final next = switch (state) {
           'tent' => CellState.tent,
           'cross' => CellState.x,
           _ => CellState.empty,
         };
-        notifier.setCellState(command.row, command.col, cell);
+        notifier.setCellState(row - 1, column - 1, next, countMove: true);
         await Future<void>.delayed(const Duration(milliseconds: 80));
-      }
+      },
+      showPopup: _showScriptPopup,
+      wait: (milliseconds) => Future<void>.delayed(Duration(milliseconds: milliseconds)),
+    );
+
+    await interpreter.run(source);
+    if (!mounted) return;
+    if (!ref.read(gameViewModelProvider).isComplete) {
+      notifier.checkSolution();
     }
   }
 
