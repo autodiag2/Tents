@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tents/ui/features/game/views/game_script_interpreter.dart';
 
@@ -83,4 +84,94 @@ else:
       throwsFormatException,
     );
   });
+
+
+  test('supports list literals, nested index mutation, while, break and functions', () async {
+    final messages = <String>[];
+    final matrix = <List<String>>[];
+    final interpreter = GameScriptInterpreter(
+      gridSize: 3,
+      getCell: (_, __) => 'empty',
+      setCell: (_, __, ___) {},
+      showPopup: messages.add,
+      wait: (_) {},
+      getRowTarget: (row) => row,
+      getColumnTarget: (column) => column + 1,
+    );
+
+    await interpreter.run('''
+def factorial(value):
+    if value <= 1:
+        return 1
+    return value * factorial(value - 1)
+
+numbers = [1, 2]
+append(numbers, 3)
+matrix = [["empty", "empty"], ["empty", "empty"]]
+matrix[1][0] = "tent"
+counter = 0
+while counter < 10:
+    counter = counter + 1
+    if counter == 3:
+        break
+result = factorial(5)
+popup(str(result) + ":" + str(len(numbers)) + ":" + matrix[1][0] + ":" + str(counter))
+''');
+
+    expect(messages, ['120:3:tent:3']);
+    expect(matrix, isEmpty);
+  });
+
+  test('exposes row and column target values to functions and expressions', () async {
+    final messages = <String>[];
+    final interpreter = GameScriptInterpreter(
+      gridSize: 3,
+      getCell: (_, __) => 'empty',
+      setCell: (_, __, ___) {},
+      showPopup: messages.add,
+      wait: (_) {},
+      getRowTarget: (row) => [2, 0, 1][row - 1],
+      getColumnTarget: (column) => [1, 1, 1][column - 1],
+    );
+
+    await interpreter.run('''
+def target_sum():
+    total = 0
+    for index in range(1, grid_size + 1):
+        total = total + row_target(index)
+    return total
+
+popup(str(target_sum()) + ":" + str(column_target(2)))
+''');
+
+    expect(messages, ['3:1']);
+  });
+
+  test('executes the standalone Tents solver script', () async {
+    final board = List.generate(4, (_) => List<String>.filled(4, 'empty'));
+    board[0][0] = 'tree';
+    board[2][2] = 'tree';
+    final messages = <String>[];
+    final interpreter = GameScriptInterpreter(
+      gridSize: 4,
+      getCell: (row, column) => board[row - 1][column - 1],
+      setCell: (row, column, state) {
+        board[row - 1][column - 1] = state;
+      },
+      showPopup: messages.add,
+      wait: (_) {},
+      getRowTarget: (row) => [1, 0, 1, 0][row - 1],
+      getColumnTarget: (column) => [0, 2, 0, 0][column - 1],
+    );
+    final script = await File('scripts/tents_solver.tents').readAsString();
+
+    await interpreter.run(script);
+
+    expect(board[0][1], 'tent');
+    expect(board[2][1], 'tent');
+    expect(board[0][0], 'tree');
+    expect(board[2][2], 'tree');
+    expect(messages, ['Puzzle solved.']);
+  });
+
 }
