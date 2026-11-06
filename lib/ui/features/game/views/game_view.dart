@@ -7,6 +7,8 @@ import 'package:tents/ui/core/theme/app_colors.dart';
 import 'package:tents/ui/core/widgets/tangible_button.dart';
 import 'package:tents/ui/core/widgets/tents_widgets.dart';
 import 'package:tents/ui/features/game/view_models/game_view_model.dart';
+import 'package:tents/ui/features/game/views/script_runner_dialog.dart';
+import 'package:tents/ui/features/game/views/game_script_interpreter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:tents/ui/providers.dart';
 
@@ -161,6 +163,27 @@ class _GameViewState extends ConsumerState<GameView> {
               _stat('Time', _formatTime(state.elapsedSeconds), Icons.timer_outlined),
               _verticalDivider(),
               _stat('Tents', '$tentCount/${level.totalTrees}', Icons.cabin_rounded),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton.icon(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (context) => ScriptRunnerDialog(onRun: _runScript),
+                ),
+                icon: const Icon(Icons.code),
+                label: const Text('Scripts'),
+              ),
+              IconButton(
+                tooltip: 'Script help',
+                onPressed: _showScriptHelp,
+                icon: const Icon(Icons.help_outline),
+              ),
             ],
           ),
         ),
@@ -496,6 +519,118 @@ class _GameViewState extends ConsumerState<GameView> {
         ],
       ],
     );
+  }
+
+  Future<void> _showScriptHelp() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Script language help'),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Scripts use a safe Python-style language. Indentation defines blocks. The language supports variables, expressions, lists, nested indexing, functions, recursion, for/while loops, break, return and if/elif/else.'),
+              SizedBox(height: 12),
+              Text('Example', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              SelectableText(
+                'def mark_if_empty(row, col):\n'
+                '    state = tile(row, col)\n'
+                '    if state == "empty":\n'
+                '        tent(row, col)\n'
+                '    return state\n'
+                '\n'
+                'positions = []\n'
+                'for row in range(1, grid_size + 1):\n'
+                '    for col in range(1, grid_size + 1):\n'
+                '        state = mark_if_empty(row, col)\n'
+                '        if state == "empty":\n'
+                '            append(positions, [row, col])',
+                style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+              SizedBox(height: 12),
+              Text('Game instructions', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text('tent(row, col) places a tent. cross(row, col) marks a cross. clear(row, col) empties a cell. wait(milliseconds) pauses. popup(text) displays a message. tile(row, col) returns tree, tent, cross or empty. row_target(row) and column_target(col) return the clues for a row or column.'),
+              SizedBox(height: 12),
+              Text('Lists and functions', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text('Create lists with values = [] or values = [1, 2]. Read and update with values[index] and matrix[row][column]. append(list, value) adds an item. pop(list) removes and returns the last item; pop(list, index) removes a chosen item. Define functions with def name(parameters): and return a value with return expression. Recursive functions are supported.'),
+              SizedBox(height: 12),
+              Text('Control flow and expressions', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text('Use for item in range(start, stop):, while condition:, break and if/elif/else. Operators include +, -, *, /, //, %, ==, !=, <, <=, >, >=, in, and, or and not. Built-ins include len(), abs(), min(), max(), int() and str(). Coordinates are 1-based. Use # for comments.'),
+              SizedBox(height: 12),
+              Text('Execution has safety limits on total operations, loop iterations and recursion depth. Scripted cell changes count as moves. When the resulting board is solved, the normal completion screen opens.'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showScriptPopup(String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Script'),
+        content: SelectableText(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runScript(String source) async {
+    final initialState = ref.read(gameViewModelProvider);
+    final level = initialState.level;
+    if (level == null || initialState.isComplete) {
+      throw StateError('No active game is available.');
+    }
+
+    final notifier = ref.read(gameViewModelProvider.notifier);
+    final interpreter = GameScriptInterpreter(
+      gridSize: level.gridSize,
+      getCell: (row, column) {
+        final board = ref.read(gameViewModelProvider).board;
+        return switch (board[row - 1][column - 1]) {
+          CellState.tree => 'tree',
+          CellState.tent => 'tent',
+          CellState.x => 'cross',
+          CellState.empty => 'empty',
+        };
+      },
+      setCell: (row, column, state) async {
+        final current = ref.read(gameViewModelProvider).board[row - 1][column - 1];
+        if (current == CellState.tree) {
+          throw FormatException('Cannot change a tree at row $row, column $column.');
+        }
+        final next = switch (state) {
+          'tent' => CellState.tent,
+          'cross' => CellState.x,
+          _ => CellState.empty,
+        };
+        notifier.setCellState(row - 1, column - 1, next, countMove: true);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+      },
+      showPopup: _showScriptPopup,
+      wait: (milliseconds) => Future<void>.delayed(Duration(milliseconds: milliseconds)),
+      getRowTarget: (row) => level.rowTentCounts[row - 1],
+      getColumnTarget: (column) => level.colTentCounts[column - 1],
+    );
+
+    await interpreter.run(source);
+    if (!mounted) return;
+    if (!ref.read(gameViewModelProvider).isComplete) {
+      notifier.checkSolution();
+    }
   }
 
   void _handlePan(Offset localPosition, BoxConstraints constraints, int N, {bool isStart = false}) {
