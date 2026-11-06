@@ -10,7 +10,7 @@ class ScriptRunnerDialog extends StatefulWidget {
 
 class _ScriptRunnerDialogState extends State<ScriptRunnerDialog> {
   final _name = TextEditingController();
-  final _source = TextEditingController(text: 'tent 1 2\nwait 300\ntent 2 3');
+  final _source = TextEditingController(text: 'tent(1, 2)\nwait(300)\ntent(2, 3)');
   Box<String>? _box;
   String? _selected;
   bool _loading = true;
@@ -82,7 +82,7 @@ class _ScriptRunnerDialogState extends State<ScriptRunnerDialog> {
               style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
               decoration: const InputDecoration(
                 labelText: 'Commands', alignLabelWithHint: true, border: OutlineInputBorder(),
-                helperText: 'tent 1 2  |  cross 2 3  |  clear 1 2  |  wait 300',
+                helperText: 'tent(row, col)  |  cross(row, col)  |  clear(row, col)  |  wait(ms)  |  popup(text)',
               ),
             ),
           ]),
