@@ -274,7 +274,7 @@ class _GameViewState extends ConsumerState<GameView> {
                                                           ref.read(gameViewModelProvider.notifier).toggleCell(r, c);
                                                         }
                                                       },
-                                                      onLongPress: () {
+                                                      onDoubleTap: () {
                                                         if (settings.isTentCrossButtonsEnabled) {
                                                           if (_inputMode == CellState.tent) {
                                                             ref.read(gameViewModelProvider.notifier).toggleCross(r, c);
@@ -429,7 +429,7 @@ class _GameViewState extends ConsumerState<GameView> {
             Padding(
               padding: EdgeInsets.symmetric(vertical: settings.isCheckButtonEnabled ? 10 : 16),
               child: Text(
-                'Tap: Tent  |  Long press: Cross',
+                'Tap: Tent  |  Double tap: Cross',
                 style: TextStyle(
                   fontSize: 12,
                   color: AppColors.subtext,
@@ -802,14 +802,14 @@ class TentsCell extends ConsumerStatefulWidget {
     required this.isTree,
     required this.isHinted,
     required this.onTap,
-    required this.onLongPress,
+    required this.onDoubleTap,
   });
 
   final CellState cellState;
   final bool isTree;
   final bool isHinted;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback onDoubleTap;
 
   @override
   ConsumerState<TentsCell> createState() => _TentsCellState();
@@ -868,7 +868,7 @@ class _TentsCellState extends ConsumerState<TentsCell> with TickerProviderStateM
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: widget.isTree ? null : widget.onTap,
-      onLongPress: widget.isTree ? null : widget.onLongPress,
+      onDoubleTap: widget.isTree ? null : widget.onDoubleTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         margin: const EdgeInsets.all(1.5),

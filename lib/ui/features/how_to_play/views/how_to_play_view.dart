@@ -69,7 +69,7 @@ class HowToPlayView extends ConsumerWidget {
                   _guideStep(
                     stepNumber: '2',
                     title: 'Pair With Trees',
-                    description: 'Each tent must be directly adjacent (horizontally or vertically) to at least one tree. Every tree must connect to a tent.',
+                    description: 'Each tent must be placed right next to a tree (up, down, left, or right — never diagonally). Every tree must connect to a tent.',
                   ),
                   const SizedBox(height: 16),
                   _guideStep(
@@ -81,7 +81,7 @@ class HowToPlayView extends ConsumerWidget {
                   _guideStep(
                     stepNumber: '4',
                     title: 'Controls',
-                    description: '• Tap a cell to place or remove a Tent.\n• Long press a cell to mark or clear a Cross.',
+                    description: '• Tap a cell to place or remove a Tent.\n• Double tap a cell to mark or clear a Cross.',
                   ),
                   const SizedBox(height: 24),
                 ],
