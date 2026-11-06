@@ -20,6 +20,10 @@ Tents is a logic puzzle game. The goal is to place tents in the grid so that eve
 2. Pair with Trees: Each tent must be orthogonally adjacent (horizontally or vertically) to at least one tree. Every tree must connect to a tent.
 3. No Touching Tents: Tents cannot touch each other in any direction, including diagonally.
 
+### Scripts
+This add capability to script the game in a python like syntax see in app help for syntax and blocks.
+Do copy paste the solution ^^
+
 ## License
 
 GNU General Public License v3.0
