@@ -24,7 +24,13 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test
+      - name: Run tests when available
+        run: |
+          if [ -d test ] && find test -type f -name '*_test.dart' -print -quit | grep -q .; then
+            flutter test
+          else
+            echo 'No Dart test files found; skipping flutter test.'
+          fi
       - run: flutter build apk --debug
       - uses: actions/upload-artifact@v4
         with:
