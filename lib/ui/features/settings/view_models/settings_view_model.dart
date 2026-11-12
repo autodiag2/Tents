@@ -32,4 +32,14 @@ class SettingsViewModel extends StateNotifier<AppSettings> {
     state = state.copyWith(isTentCrossButtonsEnabled: value);
     await settingsService.saveSettings(state);
   }
+
+  Future<void> setSelectedGameScript(String name) async {
+    state = state.copyWith(selectedGameScript: name);
+    await settingsService.saveSettings(state);
+  }
+
+  Future<void> toggleAutoRunSelectedGameScript(bool value) async {
+    state = state.copyWith(autoRunSelectedGameScript: value);
+    await settingsService.saveSettings(state);
+  }
 }

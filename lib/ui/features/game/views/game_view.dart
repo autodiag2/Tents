@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import 'package:tents/ui/core/theme/app_colors.dart';
 import 'package:tents/ui/core/widgets/tangible_button.dart';
@@ -35,13 +36,15 @@ class _GameViewState extends ConsumerState<GameView> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() {
+    Future.microtask(() async {
       if (!mounted) return;
+      final notifier = ref.read(gameViewModelProvider.notifier);
       if (widget.isRandom) {
-        ref.read(gameViewModelProvider.notifier).loadRandomLevel(widget.randomDifficulty);
+        await notifier.loadRandomLevel(widget.randomDifficulty);
       } else {
-        ref.read(gameViewModelProvider.notifier).loadLevel(widget.levelNumber);
+        await notifier.loadLevel(widget.levelNumber);
       }
+      if (mounted) await _runSelectedScriptAutomatically();
     });
   }
 
@@ -174,7 +177,17 @@ class _GameViewState extends ConsumerState<GameView> {
               TextButton.icon(
                 onPressed: () => showDialog<void>(
                   context: context,
-                  builder: (context) => ScriptRunnerDialog(onRun: _runScript),
+                  builder: (context) => ScriptRunnerDialog(
+                    onRun: _runScript,
+                    selectedScript: settings.selectedGameScript,
+                    autoRunSelectedScript: settings.autoRunSelectedGameScript,
+                    onSelectedScriptChanged: (name) => ref
+                        .read(settingsProvider.notifier)
+                        .setSelectedGameScript(name),
+                    onAutoRunChanged: (value) => ref
+                        .read(settingsProvider.notifier)
+                        .toggleAutoRunSelectedGameScript(value),
+                  ),
                 ),
                 icon: const Icon(Icons.code),
                 label: const Text('Scripts'),
@@ -588,6 +601,24 @@ class _GameViewState extends ConsumerState<GameView> {
     );
   }
 
+  Future<void> _runSelectedScriptAutomatically() async {
+    final settings = ref.read(settingsProvider);
+    final selectedScript = settings.selectedGameScript;
+    if (!settings.autoRunSelectedGameScript || selectedScript == null) return;
+
+    try {
+      final scripts = await Hive.openBox<String>('tents_game_scripts');
+      final source = scripts.get(selectedScript);
+      if (source == null || source.trim().isEmpty || !mounted) return;
+      await _runScript(source);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Automatic script failed: $error')),
+      );
+    }
+  }
+
   Future<void> _runScript(String source) async {
     final initialState = ref.read(gameViewModelProvider);
     final level = initialState.level;
@@ -877,10 +908,11 @@ class _GameViewState extends ConsumerState<GameView> {
             backgroundColor: AppColors.primary,
             textColor: AppColors.headingDark,
             borderColor: AppColors.border,
-            onPressed: () {
+            onPressed: () async {
               final notifier = ref.read(gameViewModelProvider.notifier);
               if (state.isRandomMode) {
-                notifier.loadRandomLevel(state.randomDifficulty ?? 'Easy');
+                await notifier.loadRandomLevel(state.randomDifficulty ?? 'Easy');
+                if (mounted) await _runSelectedScriptAutomatically();
               } else {
                 Navigator.pushReplacement(
                   context,
