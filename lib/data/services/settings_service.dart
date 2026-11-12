@@ -19,6 +19,8 @@ class SettingsService {
     final selectedGameScript = box.get('selected_game_script') as String?;
     final autoRunSelectedGameScript =
         box.get('auto_run_selected_game_script', defaultValue: false) as bool;
+    final autoAdvanceToNextLevel =
+        box.get('auto_advance_to_next_level', defaultValue: false) as bool;
     return AppSettings(
       isHintEnabled: isHintEnabled,
       isCheckButtonEnabled: isCheckButtonEnabled,
@@ -26,6 +28,7 @@ class SettingsService {
       theme: resolvedTheme,
       selectedGameScript: selectedGameScript,
       autoRunSelectedGameScript: autoRunSelectedGameScript,
+      autoAdvanceToNextLevel: autoAdvanceToNextLevel,
     );
   }
 
@@ -44,5 +47,6 @@ class SettingsService {
       'auto_run_selected_game_script',
       settings.autoRunSelectedGameScript,
     );
+    await box.put('auto_advance_to_next_level', settings.autoAdvanceToNextLevel);
   }
 }
