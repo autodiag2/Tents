@@ -173,6 +173,18 @@ class SettingsView extends ConsumerWidget {
 
                   _divider(),
 
+                  _gameToggle(
+                    label: 'Automatically go to next level',
+                    value: settings.autoAdvanceToNextLevel,
+                    onChanged: (val) {
+                      ref
+                          .read(settingsProvider.notifier)
+                          .toggleAutoAdvanceToNextLevel(val);
+                    },
+                  ),
+
+                  _divider(),
+
                   const SizedBox(height: 8),
                   TangibleButton(
                     text: 'Become a Backer',
