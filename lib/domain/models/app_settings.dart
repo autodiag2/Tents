@@ -164,6 +164,7 @@ class AppSettings {
     this.theme = AppThemePreset.pastelButter,
     this.selectedGameScript,
     this.autoRunSelectedGameScript = false,
+    this.autoAdvanceToNextLevel = false,
   });
 
   final bool isHintEnabled;
@@ -172,6 +173,7 @@ class AppSettings {
   final AppThemePreset theme;
   final String? selectedGameScript;
   final bool autoRunSelectedGameScript;
+  final bool autoAdvanceToNextLevel;
 
   AppSettings copyWith({
     bool? isHintEnabled,
@@ -180,6 +182,7 @@ class AppSettings {
     AppThemePreset? theme,
     String? selectedGameScript,
     bool? autoRunSelectedGameScript,
+    bool? autoAdvanceToNextLevel,
     bool clearSelectedGameScript = false,
   }) {
     return AppSettings(
@@ -193,6 +196,8 @@ class AppSettings {
           : selectedGameScript ?? this.selectedGameScript,
       autoRunSelectedGameScript:
           autoRunSelectedGameScript ?? this.autoRunSelectedGameScript,
+      autoAdvanceToNextLevel:
+          autoAdvanceToNextLevel ?? this.autoAdvanceToNextLevel,
     );
   }
 }
