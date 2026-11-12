@@ -42,4 +42,9 @@ class SettingsViewModel extends StateNotifier<AppSettings> {
     state = state.copyWith(autoRunSelectedGameScript: value);
     await settingsService.saveSettings(state);
   }
+
+  Future<void> toggleAutoAdvanceToNextLevel(bool value) async {
+    state = state.copyWith(autoAdvanceToNextLevel: value);
+    await settingsService.saveSettings(state);
+  }
 }
