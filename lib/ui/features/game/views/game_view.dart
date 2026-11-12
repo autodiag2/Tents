@@ -32,6 +32,7 @@ class GameView extends ConsumerStatefulWidget {
 class _GameViewState extends ConsumerState<GameView> {
   CellState? _dragTargetState;
   CellState _inputMode = CellState.tent;
+  bool _isAutoAdvancing = false;
 
   @override
   void initState() {
@@ -885,6 +886,17 @@ class _GameViewState extends ConsumerState<GameView> {
 
   Future<void> _onLevelComplete(GameViewModelState state) async {
     await ref.read(gameViewModelProvider.notifier).completeLevel();
+    if (!mounted || state.isRandomMode || _isAutoAdvancing) return;
+    if (!ref.read(settingsProvider).autoAdvanceToNextLevel) return;
+    _isAutoAdvancing = true;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GameView(levelNumber: widget.levelNumber + 1),
+      ),
+    );
   }
 
   Widget _buildCompletionBottomBar(GameViewModelState state) {
