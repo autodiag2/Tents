@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 enum AppThemePreset {
   pastelMint(
@@ -162,18 +162,28 @@ class AppSettings {
     this.isCheckButtonEnabled = false,
     this.isTentCrossButtonsEnabled = false,
     this.theme = AppThemePreset.pastelButter,
+    this.selectedGameScript,
+    this.autoRunSelectedGameScript = false,
+    this.autoAdvanceToNextLevel = false,
   });
 
   final bool isHintEnabled;
   final bool isCheckButtonEnabled;
   final bool isTentCrossButtonsEnabled;
   final AppThemePreset theme;
+  final String? selectedGameScript;
+  final bool autoRunSelectedGameScript;
+  final bool autoAdvanceToNextLevel;
 
   AppSettings copyWith({
     bool? isHintEnabled,
     bool? isCheckButtonEnabled,
     bool? isTentCrossButtonsEnabled,
     AppThemePreset? theme,
+    String? selectedGameScript,
+    bool? autoRunSelectedGameScript,
+    bool? autoAdvanceToNextLevel,
+    bool clearSelectedGameScript = false,
   }) {
     return AppSettings(
       isHintEnabled: isHintEnabled ?? this.isHintEnabled,
@@ -181,6 +191,13 @@ class AppSettings {
       isTentCrossButtonsEnabled:
           isTentCrossButtonsEnabled ?? this.isTentCrossButtonsEnabled,
       theme: theme ?? this.theme,
+      selectedGameScript: clearSelectedGameScript
+          ? null
+          : selectedGameScript ?? this.selectedGameScript,
+      autoRunSelectedGameScript:
+          autoRunSelectedGameScript ?? this.autoRunSelectedGameScript,
+      autoAdvanceToNextLevel:
+          autoAdvanceToNextLevel ?? this.autoAdvanceToNextLevel,
     );
   }
 }

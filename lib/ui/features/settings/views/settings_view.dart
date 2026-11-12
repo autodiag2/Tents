@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -168,6 +168,18 @@ class SettingsView extends ConsumerWidget {
                       ref
                           .read(settingsProvider.notifier)
                           .toggleTentCrossButtonsEnabled(val);
+                    },
+                  ),
+
+                  _divider(),
+
+                  _gameToggle(
+                    label: 'Automatically go to next level',
+                    value: settings.autoAdvanceToNextLevel,
+                    onChanged: (val) {
+                      ref
+                          .read(settingsProvider.notifier)
+                          .toggleAutoAdvanceToNextLevel(val);
                     },
                   ),
 

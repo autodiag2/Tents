@@ -16,11 +16,19 @@ class SettingsService {
     final isTentCrossButtonsEnabled = box.get('tent_cross_buttons_enabled', defaultValue: false) as bool;
     final themeId = box.get('app_theme', defaultValue: 'pastelButter') as String?;
     final resolvedTheme = AppThemePreset.fromId(themeId);
+    final selectedGameScript = box.get('selected_game_script') as String?;
+    final autoRunSelectedGameScript =
+        box.get('auto_run_selected_game_script', defaultValue: false) as bool;
+    final autoAdvanceToNextLevel =
+        box.get('auto_advance_to_next_level', defaultValue: false) as bool;
     return AppSettings(
       isHintEnabled: isHintEnabled,
       isCheckButtonEnabled: isCheckButtonEnabled,
       isTentCrossButtonsEnabled: isTentCrossButtonsEnabled,
       theme: resolvedTheme,
+      selectedGameScript: selectedGameScript,
+      autoRunSelectedGameScript: autoRunSelectedGameScript,
+      autoAdvanceToNextLevel: autoAdvanceToNextLevel,
     );
   }
 
@@ -30,5 +38,15 @@ class SettingsService {
     await box.put('check_button_enabled', settings.isCheckButtonEnabled);
     await box.put('tent_cross_buttons_enabled', settings.isTentCrossButtonsEnabled);
     await box.put('app_theme', settings.theme.id);
+    if (settings.selectedGameScript == null) {
+      await box.delete('selected_game_script');
+    } else {
+      await box.put('selected_game_script', settings.selectedGameScript);
+    }
+    await box.put(
+      'auto_run_selected_game_script',
+      settings.autoRunSelectedGameScript,
+    );
+    await box.put('auto_advance_to_next_level', settings.autoAdvanceToNextLevel);
   }
 }

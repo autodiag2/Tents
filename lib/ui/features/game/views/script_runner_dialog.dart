@@ -1,9 +1,21 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class ScriptRunnerDialog extends StatefulWidget {
-  const ScriptRunnerDialog({super.key, required this.onRun});
+  const ScriptRunnerDialog({
+    super.key,
+    required this.onRun,
+    required this.selectedScript,
+    required this.autoRunSelectedScript,
+    required this.onSelectedScriptChanged,
+    required this.onAutoRunChanged,
+  });
+
   final Future<void> Function(String source) onRun;
+  final String? selectedScript;
+  final bool autoRunSelectedScript;
+  final Future<void> Function(String name) onSelectedScriptChanged;
+  final Future<void> Function(bool value) onAutoRunChanged;
   @override
   State<ScriptRunnerDialog> createState() => _ScriptRunnerDialogState();
 }
@@ -15,18 +27,37 @@ class _ScriptRunnerDialogState extends State<ScriptRunnerDialog> {
   String? _selected;
   bool _loading = true;
   bool _running = false;
+  late bool _autoRunSelectedScript;
 
   @override
   void initState() {
     super.initState();
+    _autoRunSelectedScript = widget.autoRunSelectedScript;
     Hive.openBox<String>('tents_game_scripts').then((box) {
-      if (mounted) setState(() { _box = box; _loading = false; });
+      if (!mounted) return;
+      final selected = widget.selectedScript;
+      setState(() {
+        _box = box;
+        _loading = false;
+        _selected = selected != null && box.containsKey(selected) ? selected : null;
+      });
+      if (_selected != null) _source.text = box.get(_selected!) ?? _source.text;
     });
   }
 
-  void _select(String? name) {
+  Future<void> _select(String? name) async {
     if (name == null) return;
-    setState(() { _selected = name; _name.text = name; _source.text = _box!.get(name) ?? ''; });
+    setState(() {
+      _selected = name;
+      _name.text = name;
+      _source.text = _box!.get(name) ?? '';
+    });
+    await widget.onSelectedScriptChanged(name);
+  }
+
+  Future<void> _setAutoRunSelectedScript(bool value) async {
+    setState(() => _autoRunSelectedScript = value);
+    await widget.onAutoRunChanged(value);
   }
 
   Future<void> _save() async {
@@ -36,6 +67,7 @@ class _ScriptRunnerDialogState extends State<ScriptRunnerDialog> {
       return;
     }
     await _box!.put(name, _source.text);
+    await widget.onSelectedScriptChanged(name);
     if (mounted) setState(() => _selected = name);
   }
 
@@ -73,6 +105,15 @@ class _ScriptRunnerDialogState extends State<ScriptRunnerDialog> {
               hint: const Text('Select a script'),
               items: names.map((name) => DropdownMenuItem(value: name, child: Text(name))).toList(),
               onChanged: _select,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Run selected script automatically'),
+              subtitle: const Text('When a new game starts'),
+              value: _autoRunSelectedScript,
+              onChanged: _loading || _running || _selected == null
+                  ? null
+                  : _setAutoRunSelectedScript,
             ),
             const SizedBox(height: 12),
             TextField(controller: _name, decoration: const InputDecoration(labelText: 'Script name')),
